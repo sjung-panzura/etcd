@@ -13,7 +13,7 @@ import (
 	"net"
 	"net/url"
 	"os"
-	_ "os/exec"
+	"os/exec"
 	"path"
 	"sort"
 	"strings"
@@ -108,7 +108,7 @@ func updateTopology(locked bool) error {
 	}
 	if ix, n := binary.Uvarint(b); n <= 0 {
 		return fmt.Errorf("Malformed Data")
-	} else if ix == topologyIndex {
+	} else if ix == topologyIndex && theSite != nil {
 		// we are up-to-date 
 		return nil
 	}
@@ -364,6 +364,48 @@ fmt.Printf("host=%s peerurl=%s\n", host, i.PeerURLs[0])
 	}
 }
 
+func etcdRun() error {
+	fmt.Printf("Starting...\n")
+	err := etcdStart("", false)
+	if err == nil {
+		return nil
+	} else {
+		fmt.Println(err)
+	}
+
+	// pz.etcd.master
+	isEtcdMaster := false
+	for {
+		{
+			cmd := exec.Command("/bin/kenv", "pz.etcd.master")
+			out, err := cmd.Output()
+			if err == nil {
+				out = bytes.TrimSpace(out)
+				isEtcdMaster = out[0] == '1'
+			}
+		}
+
+		// try to join first: 10 times with 10 seconds interval
+		for i := 0; i < 10; i++ {
+			fmt.Printf("Trying to join...\n")
+			err = etcdJoin()
+			if err == nil {
+				return nil
+			}
+
+			time.Sleep(10 * time.Second)
+		}
+
+		if isEtcdMaster {
+			fmt.Printf("Initializing...\n")
+			err = etcdStart("", true)
+			if err == nil {
+				return nil
+			}
+		}
+	}
+}
+
 // print topology and member list
 func etcdStatus() {
 	PrintTopology()
@@ -522,7 +564,7 @@ func startSocketServer(lconn net.Listener) {
 }
 
 func usage() {
-	fmt.Printf(`Usage: %s panzura [init | start | join <host> | stop | status]
+	fmt.Printf(`Usage: %s panzura [run | stop | status]
 `,
 		path.Base(os.Args[0]))
 }
@@ -539,20 +581,8 @@ func Main() {
 
 	cmd := os.Args[2]
 	switch cmd {
-	case "init":
-		err = etcdStart("", true)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	case "start":
-		err = etcdStart("", false)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-	case "join":
-		err = etcdJoin()
+	case "run":
+		err = etcdRun()
 		if err != nil {
 			fmt.Println(err)
 			return
