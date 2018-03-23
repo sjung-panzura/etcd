@@ -16,6 +16,7 @@ package transport
 
 import (
 	"net"
+	"strings"
 	"time"
 )
 
@@ -25,8 +26,24 @@ type rwTimeoutDialer struct {
 	net.Dialer
 }
 
+var PanzuraConnect func(host string) (net.Conn, error)
+
 func (d *rwTimeoutDialer) Dial(network, address string) (net.Conn, error) {
-	conn, err := d.Dialer.Dial(network, address)
+	var conn net.Conn
+	var err error
+
+	if PanzuraConnect == nil {
+		conn, err = d.Dialer.Dial(network, address)
+	} else {
+		ls := strings.Split(address, ":")
+		if network != "tcp" || len(ls) != 2 ||
+			ls[0] == "localhost" || ls[0] == "127.0.0.1" {
+			conn, err = d.Dialer.Dial(network, address)
+		} else {
+			conn, err = PanzuraConnect(ls[0])
+		}
+	}
+
 	tconn := &timeoutConn{
 		rdtimeoutd: d.rdtimeoutd,
 		wtimeoutd:  d.wtimeoutd,

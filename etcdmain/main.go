@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-systemd/daemon"
+	"github.com/coreos/etcd/panzura"
 	systemdutil "github.com/coreos/go-systemd/util"
 )
 
@@ -39,6 +40,9 @@ func Main() {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(1)
 			}
+			return
+		case "panzura":
+			panzura.Main()
 			return
 		}
 	}
