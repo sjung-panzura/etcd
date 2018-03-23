@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	_ "io"
 	"io/ioutil"
 	"net"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charlanxcc/logrot"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/embed"
 	"github.com/coreos/etcd/etcdserver/api/v3client"
@@ -35,6 +37,11 @@ var (
 
 	etcdSocketPath      = "/tmp/etcd.conn"
 	replockTopologyPath = "/tmp/replock.topology"
+
+	// logrot related
+	etcdLogPath         = "/var/log/etcd.log"
+	etcdLogSize         = 1024768
+	etcdLogCount        = 3
 
 	topologyIndex uint64
 	topology      *Topology
@@ -575,13 +582,35 @@ func Main() {
 		os.Exit(1)
 	}
 
+	var err error
 	transport.PanzuraConnect = Connect
 
-	var err error
+	logger := func() {
+		pi, po, errr := os.Pipe()
+		if errr != nil {
+			fmt.Println(err)
+			return
+		}
+		defer po.Close()
+
+		errr = syscall.Dup2(int(po.Fd()), int(os.Stdout.Fd()))
+		if errr != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		errr = syscall.Dup2(int(po.Fd()), int(os.Stderr.Fd()))
+		if errr != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+
+		go logrot.LogRotate(pi, etcdLogPath, etcdLogSize, etcdLogCount)
+	}
 
 	cmd := os.Args[2]
 	switch cmd {
 	case "run":
+		logger()
 		err = etcdRun()
 		if err != nil {
 			fmt.Println(err)
